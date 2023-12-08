@@ -4,8 +4,8 @@
 # This script will automatically move the madgraph output directories to the 
 # location of this file.
 
-MADGRAPH_EXE = "/home/aradick/Downloads/Madgraph/MG5_aMC_v3_5_1/bin/mg5_aMC" # insert path to Madgraph executable
-MADGRAPH_OUTPUT = "/home/aradick/Downloads/Madgraph/test/" # insert location where you want to save madgraph outputs
+MADGRAPH_EXE = # insert path to Madgraph executable
+MADGRAPH_OUTPUT = # insert location where you want to save madgraph outputs
 
 # Parameters for Madgraph
 mphis_prompt = [[1e3, 1.3e3], [1e3, 4.5e3]] # GeV
