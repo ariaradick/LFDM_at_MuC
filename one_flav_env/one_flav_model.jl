@@ -1,5 +1,8 @@
 module OneFlavor
 
+using Pkg
+Pkg.activate((@__DIR__))
+
 using QuadGK
 import SpecialFunctions: besselk
 import PhysicalConstants.CODATA2018: G, FineStructureConstant
@@ -18,10 +21,6 @@ const mW = 80.370 # GeV
 # const gc20 = sqrt(4*π*αEM) * (sW2-.5) / (sqrt(sW2*cW2))
 const gc20 = sqrt(4*π*αEM*sW2/cW2)
 
-function hubble(T)
-    T^2 * sqrt(4*π^3*Grav*gstar/45)
-end
-
 function arctanh(x)
     .5*(log(1+x) - log(1-x))
 end
@@ -38,11 +37,11 @@ Most observables take this as an input.
 
 mφ : Mass of new charged scalar φ
 
-gφ : degrees of freedom for φ, should be 2.0
+gφ : spin degrees of freedom for φ, should be 1
 
 mχ : Mass of new fermion χ
 
-gχ : degrees of freedom for χ, should be 2.0
+gχ : spin degrees of freedom for χ, should be 2
 
 h : Hubble evaluated at mφ
 """
@@ -70,7 +69,7 @@ end
 
 Decay rate of φ to χ + l (no distinction between leptons in this model). 
 
-Units will be same as model.mφ.
+Units will be same as model.mφ
 """
 function Γ_φ_to_χe(model::LFDM)
     model.λ^2*model.mφ*(1-model.mχ^2/model.mφ^2)^2 / (16*π)
@@ -169,28 +168,7 @@ function σ_Ae_to_φχ(α, model::LFDM)
     return pref*(t1-t2)
 end
 
-# Boltzmann equation stuff:
-
-function Y_eq(x, g)
-    if x < 1e3
-        return g/(2*π^2) * x^2 * besselk(2,x)
-    else
-        return zero(typeof(x))
-    end
-end
-
-function Y_eq_ratio(x, model::LFDM)
-    (model.gφ/model.gχ)*(model.mφ/model.mχ)^2*bk2_ratio(x, model.mχ/model.mφ)
-end
-
-function bkf(u, x)
-    t1 = sqrt(x/π)
-    t2 = -(57+4*u)/(16*sqrt(x*π))
-    t3 = (4185+24*u*(17+2*u)) / (512 * sqrt(π*x^3))
-    t4 = -5*(24135+2724*u+432*u^2+64*u^3) / (8192*sqrt(π*x^5))
-    return t1+t2+t3+t4
-end
-
+# Model-dependent Boltzmann equation stuff:
 function bk2_ratio(x, δ)
     if x < 1e-2
         return δ^2*(1-(1-δ^2)*x^2/4)
@@ -201,28 +179,8 @@ function bk2_ratio(x, δ)
     end
 end
 
-function C22(σ, x, model::LFDM)
-    if x < 1e-2
-        return model.mφ*σ(1e10, model)*1e10/(2*model.h*model.gφ^2)
-    elseif x < 1e2
-        pref = model.mφ / (2*x*model.h*model.gφ^2*besselk(2,x)^2)
-        I = quadgk(α -> α^(3/2)*σ(α, model)*besselk(1,x*sqrt(α)), 4, Inf)[1]
-        return pref*I
-    else
-        pref = model.mφ / (x^2*model.h*model.gφ^2)
-        I = quadgk(u -> exp(-u)*(u/x+2)^4*σ((u/x+2)^2, model)*bkf(u, x), 0, Inf)[1]
-        return pref*I
-    end
-end
-
-function C12(Γ, x, model::LFDM)
-    if x < 1e-2
-        return x^2*Γ(model)/(2*model.h)
-    elseif x < 1e2
-        return x*Γ(model)*besselk(1,x)/(model.h*besselk(2,x))
-    else
-        return x*Γ(model)/model.h * (1-3/(2*x))
-    end
+function Y_eq_ratio(x, model::LFDM)
+    (model.gφ/model.gχ)*(model.mφ/model.mχ)^2*bk2_ratio(x, model.mχ/model.mφ)
 end
 
 end
