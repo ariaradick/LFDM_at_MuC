@@ -1,5 +1,11 @@
+# This file will calculate the dilepton (phi) kinematic variables for each point
+# for the prompt (long-lived) cases and save those as "dilepton_summary.csv"
+# ("diphi_summary.csv") in the respective run folder. Also organizes the rts,
+# mphi, and cross-section values for each run into "run_info.csv" at the base
+# of each madgraph output folder.
+
 using Pkg
-Pkg.activate("../one_flav_env")
+Pkg.activate((@__DIR__)*"/../one_flav_env")
 
 using LHEF
 using LorentzVectorHEP
@@ -10,15 +16,16 @@ using LinearAlgebra
 using DelimitedFiles: readdlm
 using Optim
 
-# MG_RESULTS_DIR = "../madgraph/phiscan/"
-MG_RESULTS_DIR = "../madgraph/"
+MG_RESULTS_DIR = (@__DIR__)*"/../madgraph/data/"
 
 # make sure these match what the script has output
-DIR_llνν = MG_RESULTS_DIR * "mumu_to_llvv/"
-DIR_φφ = MG_RESULTS_DIR * "mumu_to_phiphi/"
-DIR_llχχ = MG_RESULTS_DIR * "mumu_to_llchichi/"
-DIR_VVφφ = MG_RESULTS_DIR * "VV_to_phiphi/"
-DIR_VVχχ = MG_RESULTS_DIR * "VV_to_llchichi/"
+DIR_llνν = "mumu_to_llvv/"
+DIR_φφ = "mumu_to_phiphi/"
+DIR_llχχ = "mumu_to_llchichi/"
+DIR_VVφφ = "VV_to_phiphi/"
+DIR_VVχχ = "VV_to_llchichi/"
+
+FOLDERS = MG_RESULTS_DIR .* ["prompt/", "prompt_scan/", "LLP/", "LLP_scan/"]
 
 XSEC_RESULTS_FILENAME = "xsec.txt"
 LHE_FILENAME = "unweighted_events.lhe.gz"
@@ -35,6 +42,9 @@ lhe_v4(p) = LorentzVector(p.e, p.px, p.py, p.pz)
 lhe_v3(p) = SA[p.px, p.py, p.pz]
 lhe_pt(p) = SA[p.px, p.py]
 
+gamma(lv::LorentzVector) = energy(lv)/mass(lv)
+beta(lv::LorentzVector) = sqrt(1-1/gamma(lv)^2)
+
 function trans_mass(pT1, pT2, m1, m2)
     ET1 = sqrt((pT1 ⋅ pT1) + m1^2)
     ET2 = sqrt((pT2 ⋅ pT2) + m2^2)
@@ -42,9 +52,6 @@ function trans_mass(pT1, pT2, m1, m2)
 end
 
 function MT2(particle_1, particle_2)
-    p1 = lhe_v4(particle_1)
-    p2 = lhe_v4(particle_2)
-
     m1 = particle_1.m
     m2 = particle_2.m
 
@@ -54,9 +61,7 @@ function MT2(particle_1, particle_2)
     init_x = MArray{Tuple{2}}(pt_miss) ./ 2
 
     function mt_to_min(x)
-        ET1 = sqrt((pT1 ⋅ pT1) + m1^2)
-        ET2 = sqrt((pT2 ⋅ pT2) + m2^2)
-        return max(trans_mass(pT1, x, m1, 0), trans_mass(pT2, pt_miss-x, m2, 0))
+        max(trans_mass(pT1, x, m1, 0), trans_mass(pT2, pt_miss-x, m2, 0))
     end
 
     # res = optimize(mt_to_min, init_x, LBFGS(); autodiff=:forward)
@@ -122,6 +127,45 @@ function dilepton_pT(event)
     p2 = lhe_v4(event.particles[l_idx[2]])
 
     return pt(p1+p2)
+end
+
+function find_phis(event)
+    idxs = Vector{Int64}()
+    for p in event.particles[3:end]
+        if p.id in [9000006, -9000006]
+            append!(idxs, p.idx)
+        end
+    end
+    return idxs
+end
+
+function phi_summarize(event::LHEF.Event)
+    phi_idx = find_phis(event)
+
+    p1 = lhe_v4(event.particles[phi_idx[1]])
+    p2 = lhe_v4(event.particles[phi_idx[2]])
+
+    gammas = gamma.([p1,p2])
+    betas = beta.([p1,p2])
+    betagamma = betas .* gammas
+
+    etas = eta.([p1,p2])
+    
+    return Matrix(reduce(hcat, [betas, betagamma, etas])')
+end
+
+function phi_summarize(lhe::Vector{LHEF.Event})
+    N_events = length(lhe)
+
+    res = zeros(Float64, (3, 2*N_events))
+
+    for i in 1:N_events
+        s = phi_summarize(lhe[i])
+        res[:,2*i-1] = s[:,1]
+        res[:,2*i] = s[:,2]
+    end
+
+    return res
 end
 
 function get_rts(rundir)
@@ -199,61 +243,88 @@ function get_all(fn, mg_proc_dir)
     return results
 end
 
-function runs_summary(bkg_dir, sig_dirs, φφ_dirs)
-    rts_bkg = get_all(get_rts, bkg_dir)
-    sig_mumu = get_all.((get_rts, get_mphi), sig_dirs[1])
-    sig_vv = get_all.((get_rts, get_mphi), sig_dirs[2])
+function write_ll_summaries(dir)
+    N_runs = count_runs(dir)
 
-    xsecs_bkg = get_all(get_xsec, bkg_dir)
-    xsecs_mumu = get_all(get_xsec, φφ_dirs[1])
-    xsecs_vv = get_all(get_xsec, φφ_dirs[2])
-
-    if !(sig_mumu == sig_vv)
-        throw(ArgumentError("mumu and vbf don't align!"))
-    end
-
-    x_bkg = DataFrame("rts" => rts_bkg,
-                       "xsec" => xsecs_bkg)
-
-    x_mumu = DataFrame("rts" => sig_mumu[1], 
-                       "mphi" => sig_mumu[2],
-                       "xsec" => xsecs_mumu)
-    
-    x_vv = DataFrame("rts" => sig_vv[1], 
-                     "mphi" => sig_vv[2],
-                     "xsec" => xsecs_vv)
-
-    CSV.write(bkg_dir*"run_info.csv", x_bkg)
-    CSV.write(sig_dirs[1]*"run_info.csv", x_mumu)
-    CSV.write(sig_dirs[2]*"run_info.csv", x_vv)
-
-    completion_text = ["bkg", "mumu", "vbf"]
-    dirs = [bkg_dir, sig_dirs[1], sig_dirs[2]]
-    N_runs = count_runs.(dirs)
-
-    for j in 1:3
-        for i in 1:N_runs[j]
-            rundir = dirs[j]*dir_runx(i)
-            events_run = get_events(rundir)
-            summary_run = dilepton_summarize(events_run)
-            summary_df = DataFrame("m_ll" => summary_run[1,:], "pt_ll" => summary_run[2,:],
-                                    "cos_theta_ll" => summary_run[3,:],
-                                    "deltaR_ll" => summary_run[4,:],
-                                    "MT2" => summary_run[5,:])
-            CSV.write(rundir * "dilepton_summary.csv", summary_df)
-
-            events_run = nothing
-            summary_run = nothing
-            summary_df = nothing
-            GC.gc()
-            
-            println("$(completion_text[j]): $i of $(N_runs[j]) complete.")
-        end
+    for i in 1:N_runs
+        rundir = dir*dir_runx(i)
+        events_run = get_events(rundir)
+        summary_run = dilepton_summarize(events_run)
+        summary_df = DataFrame("m_ll" => summary_run[1,:], 
+                               "pt_ll" => summary_run[2,:],
+                               "cos_theta_ll" => summary_run[3,:],
+                               "deltaR_ll" => summary_run[4,:],
+                               "MT2" => summary_run[5,:])
+        CSV.write(rundir * "dilepton_summary.csv", summary_df)
+        
+        println("$i of $(N_runs) complete.")
     end
 end
 
+function write_φφ_summaries(dir)
+    N_runs = count_runs(dir)
+
+    for i in 1:N_runs
+        rundir = dir*dir_runx(i)
+        events_run = get_events(rundir)
+        summary_run = phi_summarize(events_run)
+        summary_df = DataFrame("beta" => summary_run[1,:], 
+                               "betagamma" => summary_run[2,:],
+                               "eta" => summary_run[3,:])
+        CSV.write(rundir * "diphi_summary.csv", summary_df)
+        
+        println("$i of $(N_runs) complete.")
+    end
+end
+
+function write_ll_info(dir)
+    rts = get_all(get_rts, dir)
+    xsec = get_all(get_xsec, dir)
+    df = DataFrame("rts" => rts, "xsec" => xsec)
+    CSV.write(dir*"run_info.csv", df)
+
+    write_ll_summaries(dir)
+end
+
+function write_ll_info(dir_χχ, dir_φφ)
+    rts = get_all(get_rts, dir_χχ)
+    xsec = get_all(get_xsec, dir_φφ)
+    mphi = get_all(get_mphi, dir_χχ)
+    df = DataFrame("rts" => rts, "mphi" => mphi, "xsec" => xsec)
+    CSV.write(dir_χχ*"run_info.csv", df)
+
+    write_ll_summaries(dir_χχ)
+end
+
+function write_φφ_info(dir)
+    rts = get_all(get_rts, dir)
+    xsec = get_all(get_xsec, dir)
+    mphi = get_all(get_mphi, dir)
+    df = DataFrame("rts" => rts, "mphi" => mphi, "xsec" => xsec)
+    CSV.write(dir*"run_info.csv", df)
+
+    write_φφ_summaries(dir)
+end
+
 function main()
-    runs_summary(DIR_llνν, (DIR_llχχ, DIR_VVχχ), (DIR_φφ, DIR_VVφφ))
+    println("Background:")
+    write_ll_info(MG_RESULTS_DIR*DIR_llνν)
+
+    for f in FOLDERS[1:2]
+        println("Prompt mumu:")
+        write_ll_info(f*DIR_llχχ, f*DIR_φφ)
+
+        println("Prompt VBF:")
+        write_ll_info(f*DIR_VVχχ, f*DIR_VVφφ)
+    end
+
+    for f in FOLDERS[3:4]
+        println("LLP mumu:")
+        write_φφ_info(f*DIR_φφ)
+
+        println("LLP VBF:")
+        write_φφ_info(f*DIR_VVφφ)
+    end
 end
 
 main()
