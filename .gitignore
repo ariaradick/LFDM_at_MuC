@@ -18,5 +18,7 @@ docs/build/
 docs/site/
 
 # ignore conda env
-
 .CondaPkg/
+
+# ignore Madgraph data
+madgraph/data/
