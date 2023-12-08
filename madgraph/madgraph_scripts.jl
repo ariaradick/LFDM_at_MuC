@@ -265,6 +265,7 @@ write(WW_script_file, script_WW)
 run(Cmd(`$MADGRAPH_EXE $WW_script_file`, dir=MADGRAPH_OUTPUT*"xsec/"))
 
 # copy output dirs to the location of this folder
+mkdir("./data/")
 for d in FOLDERS
-    cp(MADGRAPH_OUTPUT*d, (@__DIR__) * "/" * d, force=true)
+    cp(MADGRAPH_OUTPUT*d, (@__DIR__) * "/data/" * d, force=true)
 end
