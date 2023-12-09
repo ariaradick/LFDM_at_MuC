@@ -1,19 +1,17 @@
 module OneFlavor
 
-using Pkg
-Pkg.activate((@__DIR__))
-
-using QuadGK
-import SpecialFunctions: besselk
-import PhysicalConstants.CODATA2018: G, FineStructureConstant
-using NaturallyUnitful
-
 export LFDM, Γ_φ_to_χe, σ_AA_to_φφ, σ_Ae_to_φχ, σ_ee_to_φφ, σ_ZZ_to_φφ,
         Y_eq, Y_eq_ratio, C12, C22
 
+using QuadGK
+import SpecialFunctions: besselk
+import PhysicalConstants.CODATA2018: FineStructureConstant
+using NaturallyUnitful
+
+include((@__DIR__)*"/"*"hubble.jl")
+using .Hubble
+
 const αEM = float(FineStructureConstant)
-const Grav = ustrip(uconvert(u"GeV^-2", natural(float(G))))
-const gstar = 100
 const sW2 = .23121 # sine of weak-mixing angle squared
 const cW2 = 1 - sW2
 const mZ = 91.1876 # GeV

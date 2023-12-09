@@ -1,9 +1,7 @@
 module LFDM_Boltz
 
-export lifetime, lifetimes
-
-using Pkg
-Pkg.activate((@__DIR__))
+export Y_eq, lifetime, lifetimes, find_λ, find_λs, mχ_life, LFDM,
+    solve_boltzmann, find_mφ_τ
 
 using QuadGK
 using DifferentialEquations
@@ -11,18 +9,20 @@ using Interpolations
 using Roots
 import SpecialFunctions: besselk
 import LinearAlgebra: dot
-import PhysicalConstants.CODATA2018: G, FineStructureConstant
+import PhysicalConstants.CODATA2018: G
 using NaturallyUnitful
 
 include((@__DIR__)*"/"*"gstar.jl")
 using .gstar
+
+include((@__DIR__)*"/"*"hubble.jl")
+using .Hubble
 
 include((@__DIR__)*"/"*"one_flav_model.jl")
 import .OneFlavor: LFDM, Γ_φ_to_χe, σ_AA_to_φφ, σ_Ae_to_φχ, σ_ee_to_φφ, 
         σ_ZZ_to_φφ, Y_eq_ratio
 
 # Physical Constants:
-const αEM = float(FineStructureConstant) # Fine structure constant
 const Grav = ustrip(uconvert(u"GeV^-2", natural(float(G)))) # Gravitational constant
 
 const T0 = 2.348e-13 # GeV, present day temperature
@@ -76,28 +76,6 @@ function bk2_ratio(x, δ)
     else
         return exp(-(1-δ)*x)*(sqrt(δ)-15*(1-δ)/(8*x*sqrt(δ)))
     end
-end
-
-"""
-    hubble(T)
-
-Gives the Hubble constant H in GeV.
-
-T : Temperature [GeV]
-"""
-function hubble(T)
-    T^2 * sqrt(4*π^3*Grav*gstar_interp(T)/45)
-end
-
-"""
-    reduced_H(T)
-
-Gives H / T^2 in GeV^-1. For use in Boltzmann equations.
-
-T : Temperature [GeV]
-"""
-function reduced_H(T)
-    sqrt(4*π^3*Grav*gstar_interp(T)/45)
 end
 
 # 2 to 2 cross-sections:
@@ -218,6 +196,26 @@ function find_yχf(I, λ, mφ, mχ; gφ=1)
 end
 
 """
+    find_yχf_full(λ, mφ, mχ; gφ=1, gχ=2, xspan=(1e-4, 1e8))
+
+Calculates the final χ yield, with no approximations.
+
+xspan : The range that the differential equation solver uses. The returned
+    Y_χ will be evaluated at the second x value in xspan.
+"""
+function find_yχf_full(λ, mφ, mχ; gφ=1, gχ=2, xspan=(1e-4, 1e8))
+    mm = LFDM(λ, mφ, gφ, mχ, gχ)
+
+    # y0 = [Y_eq(xspan[1], mm.gφ), 0.0]
+    z0 = [-log(Y_eq(xspan[1], mm.gφ)), 0.0]
+
+    prob = ODEProblem(diffeq, z0, xspan, mm)
+    sol = solve(prob, Rodas4P(); reltol=1e-10, verbose=false)
+
+    return sol(xspan[2])[2]
+end
+
+"""
     find_λ(mφ, mχ)
 
 Calculates the value of the Yukawa coupling λ that gives the correct final relic
@@ -279,7 +277,7 @@ function mχ_life(τφ, mφ; gphi=1)
     γχ = I*gphi/(2*π^2*mφ^2*h_consts)
 
     τ = τφ/lifetime_conv
-    Mstar_s(mφ/25) / (γχ/τ + find_yφf(mφ; gphi=gphi))
+    Mstar_s(mφ/25) / (γχ/τ + find_yφf(mφ))
 end
 
 """
@@ -297,5 +295,66 @@ Calculates the lifetime at each mφ and mχ that corresponds to reproducing the
 correct relic abundance. Mφ and Mχ can be vectors and this will return a matrix.
 """
 lifetimes(Mφ, Mχ) = lifetime.(find_λs(Mφ, Mχ), Mφ, Mχ')
+
+const aa = 3*2/(64*π^2)*(1e3)^2/hubble(1e3)
+bb = find_yφf(1e3)/1e3
+
+function find_mφ_τ(τφ, mχ; gφ=1, mφ_min=1e-5, mφ_max=1e10)
+    τ = τφ/lifetime_conv
+
+    f(x) = 4*π*hubble(x)*τ*(Mstar_s(x/25)-x*mχ*bb) - 9*gφ*mχ
+
+    z = find_zeros(f, mφ_min, mφ_max)
+
+    λs = find_λs(z, [mχ])
+
+    return λs, z, [mχ, mχ]
+end
+
+function find_mχ_max()
+    find_zero(x -> Mstar_s(x/25) - x*find_yφf(x), (1e3, 1e4))
+end
+
+"""
+    solve_boltzmann(model::LFDM; xspan=(1e-4, 1e8), method=Rodas4P(),
+    rtol=1e-10)
+
+Solves the Boltzmann according to the function "diffeq". Returns a function
+that returns [Y_φ, Y_χ] as a function of x = mφ/T. This function accepts either
+a scalar and returns a length 2 vector, or a vector and returns a 
+2 x length(vector) sized matrix.
+
+model : An instance of LFDM
+xspan : A tuple with the beginning and endpoints for solving the Boltzmann eqn
+method : Which method for DifferentialEquations to use. I recommend Rodas4P,
+    but you can check the DifferentialEquations documentation for other options.
+rtol : relative tolerance of the DifferentialEquations solver. If this is too
+    large you can get some funky things in your solutions.
+"""
+function solve_boltzmann(model::LFDM; xspan=(1e-4, 1e8), method=Rodas4P(),
+    rtol=1e-10)
+
+    z0 = [-log(Y_eq(xspan[1], model.gφ)), 0.0]
+
+    prob = ODEProblem(diffeq, z0, xspan, model)
+    sol = solve(prob, method, reltol=rtol)
+
+    function solutions(x::Real)
+        s = sol(x)
+        return [exp(-s[1]), s[2]]
+    end
+
+    function solutions(x::Vector)
+        res = zeros(Float64, (2, length(x)))
+        for (i, y) in enumerate(x)
+            s = sol(y)
+            res[1,i] = exp(-s[1])
+            res[2,i] = s[2]
+        end
+        return res
+    end
+
+    return solutions
+end
 
 end
