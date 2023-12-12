@@ -25,6 +25,9 @@ DIR_llχχ = "mumu_to_llchichi/"
 DIR_VVφφ = "VV_to_phiphi/"
 DIR_VVχχ = "VV_to_llchichi/"
 
+DIR_AZ = MG_RESULTS_DIR * "xsec/AZ_to_phiphi_xsec/"
+DIR_WW = MG_RESULTS_DIR * "xsec/WW_to_phiphi_xsec/"
+
 FOLDERS = MG_RESULTS_DIR .* ["prompt/", "prompt_scan/", "LLP/", "LLP_scan/"]
 
 XSEC_RESULTS_FILENAME = "xsec.txt"
@@ -306,6 +309,14 @@ function write_φφ_info(dir)
     write_φφ_summaries(dir)
 end
 
+function write_φφ_xsec(dir)
+    rts = get_all(get_rts, dir)
+    xsec = get_all(get_xsec, dir)
+    mphi = get_all(get_mphi, dir)
+    df = DataFrame("rts" => rts, "mphi" => mphi, "xsec" => xsec)
+    CSV.write(dir*"run_info.csv", df)
+end
+
 function main()
     println("Background:")
     write_ll_info(MG_RESULTS_DIR*DIR_llνν)
@@ -324,6 +335,10 @@ function main()
 
         println("LLP VBF:")
         write_φφ_info(f*DIR_VVφφ)
+    end
+
+    for d in [DIR_AZ, DIR_WW]
+        write_φφ_xsec(d)
     end
 end
 
