@@ -4,8 +4,8 @@
 # This script will automatically move the madgraph output directories to the 
 # location of this file.
 
-MADGRAPH_EXE = # insert path to Madgraph executable
-MADGRAPH_OUTPUT = # insert location where you want to save madgraph outputs
+MADGRAPH_EXE = "insert path to Madgraph executable"
+MADGRAPH_OUTPUT = "insert location where you want to save madgraph outputs"
 
 # Parameters for Madgraph
 mphis_prompt = [[1e3, 1.3e3], [1e3, 4.5e3]] # GeV
