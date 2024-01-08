@@ -5,6 +5,7 @@ export gstar_interp
 using Interpolations
 import DelimitedFiles: readdlm
 
+# load data that was plot-grabbed from a simple plot of g* vs T
 data = readdlm("$(@__DIR__)/gstar_vs_T[MeV].csv", ',', Float64)
 temps = reverse(data[:,1]) .* 1e-3
 gvals = reverse(data[:,2])

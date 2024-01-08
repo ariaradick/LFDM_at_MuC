@@ -6,6 +6,7 @@ export load_run_info, load_summary, get_bkg_at_rts, dir_runx,
 using CSV
 using DataFrames
 
+# filenames from summarize_runs.jl
 RUN_RESULTS_FILENAME = "run_info.csv"
 SUMMARY_FILENAME = "dilepton_summary.csv"
 
@@ -87,10 +88,12 @@ function significances(run, lumi, mll_min, ptll_min, mt2_min)
     N_mumu = run.mumu_xsec .* lumi .* mumu_frac
     N_vv = run.vv_xsec .* lumi .* vv_frac
     N_bkg_true = run.bkg_xsec .* lumi .* bkg_frac
+    # every bkg that is < 2 replace with 2
     N_bkg = N_bkg_true .+ ((N_bkg_true .<= 2.0) .* (2.0 .- N_bkg_true))
 
     N_S = @. (N_mumu + N_vv)
 
+    # if the number of signal events is less than 20, set to zero
     @. N_S *= (N_S >= 20)
 
     return N_S ./ sqrt.(N_bkg)

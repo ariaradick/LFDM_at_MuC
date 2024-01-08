@@ -60,6 +60,7 @@ function Y_eq(x, g)
     g/(2*π^2) * x^2 * besselk(2,x)
 end
 
+# taylor series of the Bessel K_1 function inside the <σv> integral
 function bkf(u, x)
     t1 = sqrt(x/π)
     t2 = -(57+4*u)/(16*sqrt(x*π))
@@ -68,6 +69,7 @@ function bkf(u, x)
     return t1+t2+t3+t4
 end
 
+# K_2(x)/K_2(δ*x) expanded at small and large x for numerical stability
 function bk2_ratio(x, δ)
     if x < 1e-2
         return δ^2*(1-(1-δ^2)*x^2/4)
